@@ -67,13 +67,12 @@ while True:
 
 print(f"📊 Total usuarios: {len(usuarios)}")
 
-# 💾 GUARDAR JSON EN FORMATO CORRECTO (ARRAY)
+# 💾 GUARDAR JSON EN FORMATO JSONL (un objeto por línea)
 print("💾 Guardando JSON...")
-
 with open(FILE_NAME, "w") as f:
-    json.dump(usuarios, f, indent=2)
-
-print("✅ Archivo JSON listo")
+    for usuario in usuarios:
+        f.write(json.dumps(usuario) + "\n")
+print("✅ Archivo JSONL listo")
 
 # ☁️ SUBIR A S3
 print("☁️ Subiendo a S3...")

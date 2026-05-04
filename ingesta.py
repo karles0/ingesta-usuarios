@@ -1,41 +1,52 @@
-import boto3
+import requests
 import json
-from pymongo import MongoClient
+import time
+import subprocess
 import os
+from dotenv import load_dotenv
 
-# Configuración MongoDB
-mongoUri    = os.environ.get("MONGO_URI", "mongodb://localhost:27017")
-nombreBD    = "shopcloud"
-coleccion   = "usuarios"
+# cargar variables
+load_dotenv()
 
-# Configuración S3
-nombreBucket = os.environ.get("S3_BUCKET", "shopcloud-ingesta")
-ficheroLocal = "usuarios.json"
-s3Key        = "raw/usuarios/usuarios.json"
+BASE_URL = os.getenv("BASE_URL")
+EMAIL = os.getenv("EMAIL")
+PASSWORD = os.getenv("PASSWORD")
+BUCKET_NAME = os.getenv("BUCKET_NAME")
+FILE_NAME = "usuarios.json"
 
-# 1. Conectar a MongoDB y leer TODOS los registros (estrategia Pull)
-print("Conectando a MongoDB...")
-client = MongoClient(mongoUri)
-db     = client[nombreBD]
-docs   = list(db[coleccion].find({}, {"password": 0}))
-print(f"Registros leídos: {len(docs)}")
+# LOGIN
+login = requests.post(f"{BASE_URL}/usuarios/login", json={
+    "email": EMAIL,
+    "password": PASSWORD
+})
 
-# 2. Convertir ObjectId a string
-for doc in docs:
-    doc["_id"]       = str(doc["_id"])
-    doc["createdAt"] = str(doc.get("createdAt", ""))
-    doc["updatedAt"] = str(doc.get("updatedAt", ""))
+token = login.json()["token"]
 
-client.close()
+headers = {
+    "Authorization": f"Bearer {token}"
+}
 
-# 3. Guardar en archivo local
-with open(ficheroLocal, "w", encoding="utf-8") as f:
-    json.dump(docs, f, ensure_ascii=False, indent=2)
-print(f"Archivo generado: {ficheroLocal}")
+usuarios = []
+page = 1
+limit = 100
 
-# 4. Subir a S3
-print("Subiendo a S3...")
-s3 = boto3.client("s3")
-s3.upload_file(ficheroLocal, nombreBucket, s3Key)
-print(f"Subido a s3://{nombreBucket}/{s3Key}")
-print("Ingesta completada")
+while True:
+    res = requests.get(f"{BASE_URL}/usuarios?page={page}&limit={limit}", headers=headers)
+    data = res.json()["data"]
+
+    if not data:
+        break
+
+    usuarios.extend(data)
+    print(f"Página {page}")
+
+    page += 1
+    time.sleep(0.2)
+
+with open(FILE_NAME, "w") as f:
+    json.dump(usuarios, f)
+
+print("Archivo generado")
+
+# subir a S3
+subprocess.run(f"aws s3 cp {FILE_NAME} s3://{BUCKET_NAME}/", shell=True)

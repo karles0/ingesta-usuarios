@@ -17,8 +17,11 @@ login = requests.post(f"{BASE_URL}/auth/login", json={
     "password": PASSWORD
 })
 
+print("LOGIN STATUS:", login.status_code)
+print("LOGIN RESPONSE:", login.text)
+
 if login.status_code != 200:
-    print("❌ Error en login:", login.text)
+    print("❌ Login falló:", login.text)
     exit()
 
 token = login.json().get("token")
@@ -28,7 +31,7 @@ headers = {
     "Authorization": f"Bearer {token}"
 }
 
-# 📥 DESCARGAR USUARIOS (paginado)
+# 📥 DESCARGAR USUARIOS
 print("📥 Descargando usuarios...")
 
 usuarios = []
@@ -42,8 +45,6 @@ while True:
         break
 
     data = res.json()
-
-    # Ajusta esto si tu API devuelve otra estructura
     users = data.get("data") or data
 
     if not users:
@@ -56,7 +57,7 @@ while True:
 
 print(f"📊 Total usuarios: {len(usuarios)}")
 
-# 💾 GUARDAR JSON (FORMATO CORRECTO PARA ATHENA)
+# 💾 GUARDAR JSON
 print("💾 Guardando JSON...")
 
 with open(FILE_NAME, "w") as f:

@@ -1,91 +1,78 @@
 import requests
 import json
-import time
 import os
 import boto3
-from dotenv import load_dotenv
-
-load_dotenv()
 
 BASE_URL = os.getenv("BASE_URL")
 EMAIL = os.getenv("EMAIL")
 PASSWORD = os.getenv("PASSWORD")
 BUCKET_NAME = os.getenv("BUCKET_NAME")
+
 FILE_NAME = "usuarios.json"
 
-# ========= LOGIN =========
+# 🔐 LOGIN
 print("🔐 Login...")
-
-login_res = requests.post(f"{BASE_URL}/usuarios/login", json={
+login = requests.post(f"{BASE_URL}/auth/login", json={
     "email": EMAIL,
     "password": PASSWORD
 })
 
-if login_res.status_code != 200:
-    print("❌ Login falló:", login_res.text)
-    raise SystemExit(1)
+if login.status_code != 200:
+    print("❌ Error en login:", login.text)
+    exit()
 
-token = login_res.json().get("token")
-if not token:
-    print("❌ No se obtuvo token:", login_res.text)
-    raise SystemExit(1)
-
-headers = {"Authorization": f"Bearer {token}"}
+token = login.json().get("token")
 print("✅ Token OK")
 
-# ========= DESCARGA =========
-usuarios = []
-page = 1
-limit = 100
+headers = {
+    "Authorization": f"Bearer {token}"
+}
 
+# 📥 DESCARGAR USUARIOS (paginado)
 print("📥 Descargando usuarios...")
 
+usuarios = []
+page = 1
+
 while True:
-    url = f"{BASE_URL}/usuarios?page={page}&limit={limit}"
-    res = requests.get(url, headers=headers)
+    res = requests.get(f"{BASE_URL}/usuarios?page={page}", headers=headers)
 
     if res.status_code != 200:
-        print(f"❌ Error HTTP página {page}:", res.text)
+        print("❌ Error obteniendo datos:", res.text)
         break
 
-    json_res = res.json()
+    data = res.json()
 
-    if "data" not in json_res:
-        print("❌ Respuesta sin 'data':", json_res)
+    # Ajusta esto si tu API devuelve otra estructura
+    users = data.get("data") or data
+
+    if not users:
         break
 
-    data = json_res["data"]
-
-    if not data:
-        print("✔ Fin de páginas")
-        break
-
-    usuarios.extend(data)
-    print(f"✔ Página {page} ({len(data)})")
+    usuarios.extend(users)
+    print(f"✔ Página {page} - {len(users)} registros")
 
     page += 1
-    time.sleep(0.2)
 
-print(f"📊 Total: {len(usuarios)}")
+print(f"📊 Total usuarios: {len(usuarios)}")
 
-# ========= GUARDAR =========
+# 💾 GUARDAR JSON (FORMATO CORRECTO PARA ATHENA)
+print("💾 Guardando JSON...")
+
 with open(FILE_NAME, "w") as f:
-    json.dump(usuarios, f)
+    json.dump(usuarios, f, indent=2)
 
-print("💾 JSON guardado")
+print("✅ Archivo JSON listo")
 
-# ========= S3 (boto3) =========
+# ☁️ SUBIR A S3
 print("☁️ Subiendo a S3...")
 
 s3 = boto3.client("s3")
 
-try:
-    s3.upload_file(
-        FILE_NAME,
-        BUCKET_NAME,
-        f"usuarios/{FILE_NAME}"
-    )
-    print("🚀 Subido a S3 correctamente")
-except Exception as e:
-    print("❌ Error subiendo a S3:", e)
-    raise
+s3.upload_file(
+    FILE_NAME,
+    BUCKET_NAME,
+    f"usuarios/{FILE_NAME}"
+)
+
+print("🚀 Subido a S3 correctamente")

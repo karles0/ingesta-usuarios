@@ -8,9 +8,9 @@ load_dotenv()
 
 BASE_URL_MS1 = os.getenv("BASE_URL_MS1")
 BASE_URL_MS2 = os.getenv("BASE_URL_MS2")
-EMAIL       = os.getenv("EMAIL")
-PASSWORD    = os.getenv("PASSWORD")
-BUCKET_NAME = os.getenv("BUCKET_NAME")
+EMAIL        = os.getenv("EMAIL")
+PASSWORD     = os.getenv("PASSWORD")
+BUCKET_NAME  = os.getenv("BUCKET_NAME")
 
 s3 = boto3.client("s3")
 
@@ -30,7 +30,7 @@ if not token:
 headers = {"Authorization": f"Bearer {token}"}
 print("✅ Token OK")
 
-# ========= DESCARGA PEDIDOS =========
+# ========= DESCARGA PAGINADA =========
 def descargar_paginado(endpoint, nombre):
     print(f"📥 Descargando {nombre}...")
     registros = []
@@ -44,7 +44,6 @@ def descargar_paginado(endpoint, nombre):
             print(f"❌ Error HTTP página {page}:", res.text)
             break
         json_res = res.json()
-        # El response es un mapa genérico, busca la lista
         data = None
         if isinstance(json_res, list):
             data = json_res
@@ -65,14 +64,30 @@ def descargar_paginado(endpoint, nombre):
     print(f"📊 Total {nombre}: {len(registros)}")
     return registros
 
+# ========= SUBIR A S3 =========
 def subir_s3(registros, nombre_archivo, carpeta):
     file_path = f"/tmp/{nombre_archivo}"
     with open(file_path, "w") as f:
         for r in registros:
             f.write(json.dumps(r) + "\n")
-    print(f"☁️ Subiendo {nombre_archivo} a S3...")
+    print(f"☁️  Subiendo {nombre_archivo} a S3...")
     s3.upload_file(file_path, BUCKET_NAME, f"{carpeta}/{nombre_archivo}")
     print(f"🚀 {nombre_archivo} subido correctamente")
 
+# ========= MAIN =========
 pedidos = descargar_paginado("pedidos", "pedidos")
-subir_s3(pedidos, "pedidos.json", "pedidos")
+
+# Extraer detalle como tabla separada
+print("📋 Extrayendo detalle de pedidos...")
+detalle_registros = []
+for pedido in pedidos:
+    for item in pedido.get("detalle", []):
+        item["pedido_id"] = pedido.get("id")
+        detalle_registros.append(item)
+print(f"📊 Total detalle: {len(detalle_registros)}")
+
+# Pedidos sin el campo detalle
+pedidos_limpios = [{k: v for k, v in p.items() if k != "detalle"} for p in pedidos]
+
+subir_s3(pedidos_limpios, "pedidos.json", "pedidos")
+subir_s3(detalle_registros, "detalle_pedidos.json", "detalle_pedidos")
